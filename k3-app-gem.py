@@ -13,7 +13,9 @@ genai.configure(api_key=api_key)
 # Page Config
 st.set_page_config(
     page_title="K3 Dashboard & AI Analyst",
-    page_icon="⚡",
+
+    #Page icon using URL image
+    page_icon="https://mitrakaryaprima.com/wp-content/uploads/2019/04/cropped-logo-mkp.png",
     layout="wide",
     initial_sidebar_state="expanded"
 )
@@ -66,10 +68,11 @@ def analyze_k3_data(df):
     Penyebab Sering Muncul:
     {top_causes}
     
-    Tolong berikan ringkasan eksekutif (3-4 paragraf):
-    1. Wilayah dengan insiden kritis (Unsafe Action/Condition) tertinggi.
-    2. Tren penyebab utama yang harus segera diperbaiki Manajemen.
-    3. Rekomendasi langkah preventif untuk wilayah tersebut dengan prioritas.
+    Tolong berikan ringkasan eksekutif:
+    1. Ringkasan lokasi dan penyebab paling sering terjadinya setiap {top_causes} 
+    2. Informasi kategori temuan paling sering terjadi di temuan_nama_distrik dengan identifikasi pembagian wilayah.
+    3. Tren penyebab utama yang harus segera diperbaiki.
+    4. Rekomendasi langkah preventif untuk wilayah tersebut dengan prioritas.
     """
     
     model = genai.GenerativeModel(model_name)
@@ -104,7 +107,8 @@ def create_wilayah_bar_chart(df):
     return fig
 
 def create_kategori_wilayah_heatmap(df):
-    """Heatmap untuk hubungan kategori & wilayah"""
+    """Heatmap disabled in single-page layout (kept for compatibility)."""
+    # Heatmap intentionally left uncalled in the single-page UI.
     pivot_table = df.groupby(['Wilayah', 'temuan_kategori']).size().unstack(fill_value=0)
     fig = px.imshow(
         pivot_table,
@@ -216,101 +220,71 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Header
-st.title("⚡ K3 Corporate Dashboard & AI Analyst")
-st.markdown("**Safety & Health (K3) Analytics untuk Unit Pembangkit Listrik**", unsafe_allow_html=True)
+# Header and single-page UI (no heatmap)
+st.title("🏭 MKP K3 Dashboard & AI Analyst 👷‍♂️")
+
+# Subtitle with markdown in the center
 st.markdown("---")
 
-# Sidebar
-with st.sidebar:
-    st.header("📋 Menu Navigasi")
-    page = st.radio("Pilih Halaman:", ["📊 Dashboard", "🤖 AI Insights", "📈 Detailed Analytics"])
-
-# UI Streamlit
+# File uploader
 uploaded_file = st.file_uploader("📂 Upload Data K3", type=["xlsx", "csv"], key="file_uploader")
 
 if uploaded_file:
-    # Load data
     try:
         df = pd.read_csv(uploaded_file, header=3) if 'csv' in uploaded_file.name else pd.read_excel(uploaded_file, header=3)
         df['Wilayah'] = df['temuan_nama_distrik'].apply(map_wilayah_indonesia)
-        
-        # Summary metrics
-        col1, col2, col3, col4 = st.columns(4)
+
+        # Top-level metrics
+        col1, col2, col3, col4 = st.columns([1,1,1,1])
         with col1:
-            st.metric("📊 Total Temuan", len(df), delta=None)
+            st.metric("📊 Total Temuan", len(df))
         with col2:
             st.metric("🗺️ Jumlah Wilayah", df['Wilayah'].nunique())
         with col3:
             st.metric("🏭 Jumlah Unit", df['temuan_nama_distrik'].nunique())
         with col4:
             st.metric("⚠️ Kategori", df['temuan_kategori'].nunique())
-        
+
         st.markdown("---")
-        
-        # Pages
-        if page == "📊 Dashboard":
-            st.header("📊 Dasbor Analytics")
-            
-            # Row 1: Pie and Bar charts
-            col1, col2 = st.columns(2)
-            with col1:
+
+        # Main content: charts left, AI panel right
+        left, right = st.columns([2,1])
+
+        with left:
+            st.subheader("Visualisasi Distribusi")
+            # Row: Pie & Bar
+            r1c1, r1c2 = st.columns(2)
+            with r1c1:
                 st.plotly_chart(create_kategori_pie_chart(df), use_container_width=True)
-            with col2:
+            with r1c2:
                 st.plotly_chart(create_wilayah_bar_chart(df), use_container_width=True)
-            
-            # Row 2: Heatmap
-            st.plotly_chart(create_kategori_wilayah_heatmap(df), use_container_width=True)
-            
-            # Row 3: Stacked bar
+
+            # Stacked bar and histogram
             st.plotly_chart(create_kategori_wilayah_stacked_bar(df), use_container_width=True)
-            
-            # Row 4: Histogram
             st.plotly_chart(create_distrik_histogram(df), use_container_width=True)
-        
-        elif page == "🤖 AI Insights":
-            st.header("🤖 Analisis AI")
-            st.markdown("Gunakan AI untuk mendapatkan insights strategis dari data K3 Anda", unsafe_allow_html=True)
-            st.markdown("---")
-            
-            # Show available model
+
+        with right:
+            st.subheader("🤖 AI Insights")
+            st.markdown("Gunakan AI untuk mendapatkan ringkasan strategis dan rekomendasi mitigasi.")
             model_name = get_available_model()
             st.info(f"✅ Menggunakan model: **{model_name}**")
-            
+
             if st.button("🚀 Jalankan Analisis AI", key="analyze_btn"):
                 with st.spinner('🔄 AI sedang memproses dan menganalisis data...'):
                     insight = analyze_k3_data(df)
                     st.markdown("### 📌 Insight Strategis")
                     st.markdown(insight)
-        
-        elif page == "📈 Detailed Analytics":
-            st.header("📈 Analytics Terperinci")
-            
-            # Tabs for different analyses
-            tab1, tab2, tab3 = st.tabs(["📊 Data Preview", "📋 Summary Table", "📉 Distribution"])
-            
-            with tab1:
-                st.subheader("Preview Data")
-                st.dataframe(
-                    df[['temuan_nama_distrik', 'Wilayah', 'temuan_kategori', 'judul']].head(20),
-                    use_container_width=True
-                )
-            
-            with tab2:
-                st.subheader("Ringkasan Data")
-                summary = df.groupby(['Wilayah', 'temuan_kategori']).size().reset_index(name='Jumlah')
-                st.dataframe(summary, use_container_width=True)
-            
-            with tab3:
-                st.subheader("Distribusi Detail")
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write("**Distribusi per Kategori:**")
-                    st.dataframe(df['temuan_kategori'].value_counts(), use_container_width=True)
-                with col2:
-                    st.write("**Distribusi per Wilayah:**")
-                    st.dataframe(df['Wilayah'].value_counts(), use_container_width=True)
-    
+
+        # Detailed section
+        st.markdown("---")
+        st.subheader("📈 Detailed Analytics")
+        tab1, tab2 = st.tabs(["Preview Data", "Summary Table"])
+        with tab1:
+            st.dataframe(df[['temuan_nama_distrik', 'Wilayah', 'temuan_kategori', 'judul']].head(50), use_container_width=True)
+        with tab2:
+            summary = df.groupby(['Wilayah', 'temuan_kategori']).size().reset_index(name='Jumlah')
+            st.dataframe(summary, use_container_width=True)
+
     except Exception as e:
         st.error(f"❌ Error saat membaca file: {str(e)}")
         st.info("Pastikan file Excel memiliki header pada baris ke-4 dan kolom yang benar")
