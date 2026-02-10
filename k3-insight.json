@@ -1,0 +1,121 @@
+{
+  "name": "K3 Insight Simple Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8 * * 1"
+            }
+          ]
+        }
+      },
+      "id": "Schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1,
+      "position": [200, 300]
+    },
+    {
+      "parameters": {
+        "filePath": "/data/k3/data_k3.xlsx"
+      },
+      "id": "ReadFile",
+      "name": "Read Excel File",
+      "type": "n8n-nodes-base.readBinaryFile",
+      "typeVersion": 1,
+      "position": [400, 300]
+    },
+    {
+      "parameters": {
+        "operation": "read",
+        "options": {}
+      },
+      "id": "Spreadsheet",
+      "name": "Spreadsheet File",
+      "type": "n8n-nodes-base.spreadsheetFile",
+      "typeVersion": 1,
+      "position": [600, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{$json.temuan_kategori}}",
+              "operation": "notEmpty"
+            }
+          ]
+        }
+      },
+      "id": "Filter",
+      "name": "Filter Valid Rows",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [800, 300]
+    },
+    {
+      "parameters": {
+        "language": "javascript",
+        "code": "const items = $input.all();\n\nfunction groupCount(arr, key) {\n  return arr.reduce((acc, cur) => {\n    const val = cur.json[key] || 'UNKNOWN';\n    acc[val] = (acc[val] || 0) + 1;\n    return acc;\n  }, {});\n}\n\nfunction topN(obj, n=3) {\n  return Object.entries(obj)\n    .sort((a,b)=>b[1]-a[1])\n    .slice(0,n);\n}\n\nfunction mapWilayah(distrik) {\n  distrik = (distrik || '').toUpperCase();\n  if (distrik.includes('GRESIK') || distrik.includes('PAITON') || distrik.includes('INDRAMAYU')) return 'JAWA';\n  if (distrik.includes('SUMBAWA') || distrik.includes('SULAWESI')) return 'SULAWESI';\n  if (distrik.includes('KALIMANTAN')) return 'KALIMANTAN';\n  if (distrik.includes('SUMATERA') || distrik.includes('PEUSANGAN')) return 'SUMATERA';\n  return 'LAINNYA';\n}\n\nconst kategoriCount = groupCount(items, 'temuan_kategori');\n\nconst penyebabArr = items.map(i => ({\n  kategori: i.json.temuan_kategori,\n  penyebab: (i.json.judul || '') + ' | ' + (i.json.kondisi || '')\n}));\n\nconst lokasiArr = items.map(i => ({\n  kategori: i.json.temuan_kategori,\n  lokasi: (i.json.nama_lokasi || '') + ' - ' + (i.json.keterangan_lokasi || '')\n}));\n\nconst wilayahArr = items.map(i => ({\n  wilayah: mapWilayah(i.json.temuan_nama_distrik),\n  kategori: i.json.temuan_kategori\n}));\n\nfunction groupByKategori(arr, field) {\n  const result = {};\n  arr.forEach(item => {\n    const key = item.kategori;\n    result[key] = result[key] || {};\n    const val = item[field];\n    result[key][val] = (result[key][val] || 0) + 1;\n  });\n  return result;\n}\n\nconst penyebabGrouped = groupByKategori(penyebabArr, 'penyebab');\nconst lokasiGrouped = groupByKategori(lokasiArr, 'lokasi');\n\nconst wilayahCount = wilayahArr.reduce((acc, cur) => {\n  const key = cur.wilayah + ' - ' + cur.kategori;\n  acc[key] = (acc[key] || 0) + 1;\n  return acc;\n}, {});\n\nreturn [{\n  json: {\n    kategoriCount,\n    topPenyebab: Object.fromEntries(Object.entries(penyebabGrouped).map(([k,v])=>[k, topN(v)])),\n    topLokasi: Object.fromEntries(Object.entries(lokasiGrouped).map(([k,v])=>[k, topN(v)])),\n    wilayahCount\n  }\n}];"
+      },
+      "id": "Analysis",
+      "name": "Analyze K3 Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1000, 300]
+    },
+    {
+      "parameters": {
+        "values": {
+          "string": [
+            {
+              "name": "email_body",
+              "value": "=Insight K3 Mingguan\\n\\nRekap Kategori:\\n{{$json.kategoriCount}}\\n\\nTop Penyebab:\\n{{$json.topPenyebab}}\\n\\nTop Lokasi:\\n{{$json.topLokasi}}\\n\\nRekap Wilayah:\\n{{$json.wilayahCount}}"
+            }
+          ]
+        }
+      },
+      "id": "Compose",
+      "name": "Compose Email",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 2,
+      "position": [1200, 300]
+    },
+    {
+      "parameters": {
+        "fromEmail": "your@email.com",
+        "toEmail": "manager@email.com",
+        "subject": "Insight K3 Mingguan",
+        "text": "={{$json.email_body}}"
+      },
+      "id": "Email",
+      "name": "Send Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2,
+      "position": [1400, 300]
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [[{ "node": "Read Excel File", "type": "main", "index": 0 }]]
+    },
+    "Read Excel File": {
+      "main": [[{ "node": "Spreadsheet File", "type": "main", "index": 0 }]]
+    },
+    "Spreadsheet File": {
+      "main": [[{ "node": "Filter Valid Rows", "type": "main", "index": 0 }]]
+    },
+    "Filter Valid Rows": {
+      "main": [[{ "node": "Analyze K3 Data", "type": "main", "index": 0 }]]
+    },
+    "Analyze K3 Data": {
+      "main": [[{ "node": "Compose Email", "type": "main", "index": 0 }]]
+    },
+    "Compose Email": {
+      "main": [[{ "node": "Send Email", "type": "main", "index": 0 }]]
+    }
+  }
+}
